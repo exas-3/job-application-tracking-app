@@ -8,6 +8,15 @@ services:
       - "5432:5432"
     volumes:
       - pgdata_dev:/var/lib/postgresql/data
+    networks:
+      - app_net
 
 volumes:
   pgdata_dev:
+
+networks:
+  app_net:
+    name: jobtracker_app_net
+    ipam:
+      config:
+        - subnet: 172.30.0.0/16
