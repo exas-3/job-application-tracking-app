@@ -5,7 +5,7 @@ import { signInWithEmailAndPassword } from "firebase/auth";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { trackAnalyticsEvent } from "@/lib/firebase/analytics";
-import { firebaseAuth } from "@/lib/firebase/client";
+import { getFirebaseAuthInstance } from "@/lib/firebase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -48,7 +48,7 @@ export function RegisterForm() {
                 }
 
                 const credential = await signInWithEmailAndPassword(
-                  firebaseAuth,
+                  getFirebaseAuthInstance(),
                   email,
                   password,
                 );

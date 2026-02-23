@@ -1,16 +1,26 @@
-import { getApp, getApps, initializeApp } from "firebase/app";
+import { getApp, getApps, initializeApp, type FirebaseApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getFirebaseClientConfig } from "@/lib/firebase/clientEnv";
 
-function getFirebaseClientApp() {
+let appCache: FirebaseApp | null = null;
+
+export function getFirebaseClientApp() {
+  if (appCache) return appCache;
+
   if (getApps().length) {
-    return getApp();
+    appCache = getApp();
+    return appCache;
   }
 
-  return initializeApp(getFirebaseClientConfig());
+  appCache = initializeApp(getFirebaseClientConfig());
+  return appCache;
 }
 
-export const firebaseClientApp = getFirebaseClientApp();
-export const firebaseAuth = getAuth(firebaseClientApp);
-export const firebaseDb = getFirestore(firebaseClientApp);
+export function getFirebaseAuthInstance() {
+  return getAuth(getFirebaseClientApp());
+}
+
+export function getFirebaseDbInstance() {
+  return getFirestore(getFirebaseClientApp());
+}

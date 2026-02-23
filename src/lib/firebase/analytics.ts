@@ -1,7 +1,7 @@
 "use client";
 
 import { getAnalytics, isSupported, logEvent } from "firebase/analytics";
-import { firebaseClientApp } from "@/lib/firebase/client";
+import { getFirebaseClientApp } from "@/lib/firebase/client";
 
 let analyticsInit: Promise<ReturnType<typeof getAnalytics> | null> | null = null;
 
@@ -11,7 +11,9 @@ async function getFirebaseAnalytics() {
 
   if (!analyticsInit) {
     analyticsInit = isSupported()
-      .then((supported) => (supported ? getAnalytics(firebaseClientApp) : null))
+      .then((supported) =>
+        supported ? getAnalytics(getFirebaseClientApp()) : null,
+      )
       .catch(() => null);
   }
 
