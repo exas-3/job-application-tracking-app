@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { prisma } from "@/lib/prisma";
+import { userRepository } from "@/lib/repositories";
 import { registerBodySchema } from "@/lib/validation/auth";
 
 export async function POST(req: Request) {
@@ -23,7 +23,7 @@ export async function POST(req: Request) {
   const { email, password, name } = parsed.data;
   const normalizedName = name ?? null;
 
-  const existing = await prisma.user.findUnique({ where: { email } });
+  const existing = await userRepository.findByEmail(email);
   if (existing) {
     return NextResponse.json(
       { error: "Email already in use." },
@@ -33,10 +33,14 @@ export async function POST(req: Request) {
 
   const hash = await bcrypt.hash(password, 10);
 
-  const user = await prisma.user.create({
-    data: { email, password: hash, name: normalizedName },
-    select: { id: true, email: true, name: true },
+  const user = await userRepository.create({
+    email,
+    password: hash,
+    name: normalizedName,
   });
 
-  return NextResponse.json({ user }, { status: 201 });
+  return NextResponse.json(
+    { user: { id: user.id, email: user.email, name: user.name } },
+    { status: 201 },
+  );
 }
