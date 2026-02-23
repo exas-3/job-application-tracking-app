@@ -48,3 +48,19 @@ export const listApplicationsQuerySchema = z.object({
     .regex(/^\d+$/, "Invalid cursor.")
     .optional(),
 });
+
+export const importLinkedInSchema = z.object({
+  linkedinUrl: z
+    .string()
+    .trim()
+    .url("LinkedIn URL is invalid.")
+    .refine((value) => {
+      try {
+        const url = new URL(value);
+        return url.hostname.endsWith("linkedin.com");
+      } catch {
+        return false;
+      }
+    }, "Only linkedin.com URLs are supported."),
+  jobText: z.string().trim().max(12000).optional(),
+});

@@ -14,7 +14,7 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { Edit3, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+import { Edit3, Link2, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { trackAnalyticsEvent } from "@/lib/firebase/analytics";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
 
 const STATUSES = [
   "SAVED",
@@ -46,6 +47,8 @@ type ApplicationItem = {
   company: string;
   role: string;
   status: ApplicationStatus;
+  jobUrl?: string | null;
+  location?: string | null;
   createdAt: string;
   updatedAt?: string;
 };
@@ -55,6 +58,16 @@ type PageResponse = {
   pageInfo?: {
     nextCursor: string | null;
     limit: number;
+  };
+};
+
+type LinkedInImportResponse = {
+  fields: {
+    company: string | null;
+    role: string | null;
+    location: string | null;
+    jobUrl: string | null;
+    warnings: string[];
   };
 };
 
@@ -215,6 +228,11 @@ export function ApplicationsPanel() {
   const [company, setCompany] = useState("");
   const [role, setRole] = useState("");
   const [status, setStatus] = useState<ApplicationStatus>("SAVED");
+  const [jobUrl, setJobUrl] = useState("");
+  const [location, setLocation] = useState("");
+  const [linkedinUrl, setLinkedinUrl] = useState("");
+  const [importJobText, setImportJobText] = useState("");
+  const [importing, setImporting] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
@@ -351,6 +369,10 @@ export function ApplicationsPanel() {
     setCompany("");
     setRole("");
     setStatus("SAVED");
+    setJobUrl("");
+    setLocation("");
+    setLinkedinUrl("");
+    setImportJobText("");
   };
 
   const openEdit = (item: ApplicationItem) => {
@@ -359,15 +381,33 @@ export function ApplicationsPanel() {
     setCompany(item.company);
     setRole(item.role);
     setStatus(item.status);
+    setJobUrl(item.jobUrl ?? "");
+    setLocation(item.location ?? "");
+    setLinkedinUrl(item.jobUrl ?? "");
+    setImportJobText("");
+  };
+
+  const normalizeOptional = (value: string): string | null => {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
   };
 
   const runCreate = async () => {
+    const payload = {
+      company: company.trim(),
+      role: role.trim(),
+      status,
+      jobUrl: normalizeOptional(jobUrl),
+      location: normalizeOptional(location),
+    };
     const tempId = `tmp-${Date.now()}`;
     const optimistic: ApplicationItem = {
       id: tempId,
-      company,
-      role,
+      company: payload.company,
+      role: payload.role,
       status,
+      jobUrl: payload.jobUrl,
+      location: payload.location,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -378,7 +418,7 @@ export function ApplicationsPanel() {
       const res = await fetchWithRetry("/api/applications", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ company, role, status }),
+        body: JSON.stringify(payload),
       });
 
       const data = (await res.json()) as {
@@ -420,12 +460,21 @@ export function ApplicationsPanel() {
   const runUpdate = async () => {
     if (!editing) return;
 
+    const payload = {
+      company: company.trim(),
+      role: role.trim(),
+      status,
+      jobUrl: normalizeOptional(jobUrl),
+      location: normalizeOptional(location),
+    };
     const prev = editing;
     const next: ApplicationItem = {
       ...editing,
-      company,
-      role,
+      company: payload.company,
+      role: payload.role,
       status,
+      jobUrl: payload.jobUrl,
+      location: payload.location,
       updatedAt: new Date().toISOString(),
     };
 
@@ -435,7 +484,7 @@ export function ApplicationsPanel() {
       const res = await fetchWithRetry(`/api/applications/${editing.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ company, role, status }),
+        body: JSON.stringify(payload),
       });
 
       const data = (await res.json()) as {
@@ -470,6 +519,55 @@ export function ApplicationsPanel() {
         },
       });
       throw error;
+    }
+  };
+
+  const importFromLinkedIn = async () => {
+    const normalizedUrl = linkedinUrl.trim();
+    if (!normalizedUrl) {
+      toast.error("Paste a LinkedIn job URL first.");
+      return;
+    }
+
+    setImporting(true);
+    try {
+      const res = await fetchWithRetry("/api/applications/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          linkedinUrl: normalizedUrl,
+          jobText: importJobText.trim() || undefined,
+        }),
+      });
+
+      const payload = (await res.json()) as {
+        error?: string;
+      } & Partial<LinkedInImportResponse>;
+
+      if (!res.ok || !payload.fields) {
+        throw new Error(payload.error ?? "Failed to import from LinkedIn.");
+      }
+
+      const { fields } = payload;
+      if (fields.company) setCompany(fields.company);
+      if (fields.role) setRole(fields.role);
+      if (fields.location) setLocation(fields.location);
+      if (fields.jobUrl) setJobUrl(fields.jobUrl);
+
+      if (fields.warnings.length > 0) {
+        toast.warning(fields.warnings[0] ?? "Partial import completed.");
+      } else {
+        toast.success("Imported details from LinkedIn.");
+      }
+      await trackAnalyticsEvent("application_import_linkedin");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to import from LinkedIn.";
+      toast.error(message);
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -793,6 +891,45 @@ export function ApplicationsPanel() {
             }
           }}
         >
+          {dialogMode === "create" ? (
+            <section className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div className="flex items-center gap-2 text-sm font-medium text-slate-800">
+                <Link2 className="h-4 w-4" />
+                Autofill from LinkedIn
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="linkedin-url">LinkedIn job URL</Label>
+                <Input
+                  id="linkedin-url"
+                  value={linkedinUrl}
+                  onChange={(event) => setLinkedinUrl(event.target.value)}
+                  placeholder="https://www.linkedin.com/jobs/view/..."
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="linkedin-job-text">Job text (optional fallback)</Label>
+                <Textarea
+                  id="linkedin-job-text"
+                  value={importJobText}
+                  onChange={(event) => setImportJobText(event.target.value)}
+                  placeholder="Paste the job description text if LinkedIn blocks metadata."
+                />
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    void importFromLinkedIn();
+                  }}
+                  disabled={saving || importing}
+                >
+                  {importing ? "Importing..." : "Autofill"}
+                </Button>
+              </div>
+            </section>
+          ) : null}
+
           <div className="grid gap-2">
             <Label htmlFor="company">Company</Label>
             <Input
@@ -826,6 +963,24 @@ export function ApplicationsPanel() {
                 </option>
               ))}
             </Select>
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="job-url">Job URL (optional)</Label>
+            <Input
+              id="job-url"
+              value={jobUrl}
+              onChange={(event) => setJobUrl(event.target.value)}
+              placeholder="https://www.linkedin.com/jobs/view/..."
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="location">Location (optional)</Label>
+            <Input
+              id="location"
+              value={location}
+              onChange={(event) => setLocation(event.target.value)}
+              placeholder="Thessaloniki, Greece"
+            />
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
