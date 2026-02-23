@@ -8,11 +8,15 @@ export default async function AppHome() {
   if (!session) redirect("/login");
 
   return (
-    <main style={{ padding: 24 }}>
-      <h1 style={{ fontSize: 24, fontWeight: 600 }}>Dashboard</h1>
-      <pre style={{ marginTop: 16 }}>{JSON.stringify(session, null, 2)}</pre>
+    <main className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-8">
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Dashboard</h1>
+          <p className="mt-1 text-sm text-slate-600">Signed in as {session.email ?? "unknown"}</p>
+        </div>
+        <LogoutButton />
+      </header>
       <ApplicationsPanel />
-      <LogoutButton />
     </main>
   );
 }
