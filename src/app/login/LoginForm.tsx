@@ -1,6 +1,7 @@
 "use client";
 
-import { signIn } from "next-auth/react";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { firebaseAuth } from "@/lib/firebase/client";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -21,20 +22,31 @@ export function LoginForm() {
           setErr(null);
           setLoading(true);
 
-          const res = await signIn("credentials", {
-            email,
-            password,
-            redirect: false,
-          });
+          try {
+            const credential = await signInWithEmailAndPassword(
+              firebaseAuth,
+              email,
+              password,
+            );
+            const idToken = await credential.user.getIdToken();
+            const sessionRes = await fetch("/api/session/login", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ idToken }),
+            });
 
-          setLoading(false);
+            if (!sessionRes.ok) {
+              setErr("Unable to create session. Please try again.");
+              setLoading(false);
+              return;
+            }
 
-          if (res?.error) {
+            setLoading(false);
+            router.push("/app");
+          } catch {
             setErr("Invalid email or password.");
-            return;
+            setLoading(false);
           }
-
-          router.push("/app");
         }}
         style={{ display: "grid", gap: 12, marginTop: 16 }}
       >
@@ -72,4 +84,3 @@ export function LoginForm() {
     </main>
   );
 }
-

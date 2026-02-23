@@ -2,14 +2,13 @@ export type UserEntity = {
   id: string;
   email: string;
   name: string | null;
-  password: string;
   createdAt: Date;
   updatedAt: Date;
 };
 
 export type CreateUserInput = {
+  id?: string;
   email: string;
-  password: string;
   name?: string | null;
 };
 
