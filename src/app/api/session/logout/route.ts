@@ -4,8 +4,17 @@ import { firebaseAdminAuth } from "@/lib/firebase/admin";
 import { SESSION_COOKIE_NAME } from "@/lib/auth/session";
 import { log } from "@/lib/logging";
 import { reportError } from "@/lib/monitoring";
+import { checkRateLimit, getRateLimitKey } from "@/lib/rateLimit";
 
-export async function POST() {
+export async function POST(req: Request) {
+  const limited = checkRateLimit(getRateLimitKey("session_logout", req), {
+    limit: 60,
+    windowMs: 60_000,
+  });
+  if (limited) {
+    return NextResponse.json({ error: "Too many requests." }, { status: 429 });
+  }
+
   const cookieStore = await cookies();
   const cookie = cookieStore.get(SESSION_COOKIE_NAME)?.value;
 

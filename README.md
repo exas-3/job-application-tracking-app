@@ -23,6 +23,8 @@ Copy `.env.example` to `.env` and set all Firebase values:
 - `FIREBASE_CLIENT_EMAIL`
 - `FIREBASE_PRIVATE_KEY` (use escaped newlines: `\n`)
 - `SENTRY_DSN` (optional, for server-side error monitoring)
+- `NEXT_PUBLIC_SENTRY_DSN` (optional, for client-side error monitoring)
+- `SENTRY_ORG` and `SENTRY_PROJECT` (optional, for source map upload metadata)
 
 ## Auth model
 

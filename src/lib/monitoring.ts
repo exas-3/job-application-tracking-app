@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs";
 import { log } from "@/lib/logging";
 
 type MonitoringContext = Record<string, unknown>;
@@ -14,16 +15,10 @@ export function reportError(
     message: details.message ?? "unknown",
   });
 
-  if (!process.env.SENTRY_DSN) return;
-
-  void import("@sentry/nextjs")
-    .then((Sentry) => {
-      Sentry.captureException(error, {
-        tags: { event },
-        extra: context,
-      });
-    })
-    .catch(() => {
-      // Ignore optional monitoring backend failures.
+  if (process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN) {
+    Sentry.captureException(error, {
+      tags: { event },
+      extra: context,
     });
+  }
 }

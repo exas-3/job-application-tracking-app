@@ -4,12 +4,21 @@ import { firebaseAdminAuth } from "@/lib/firebase/admin";
 import { getSessionCookieConfig } from "@/lib/auth/session";
 import { log } from "@/lib/logging";
 import { reportError } from "@/lib/monitoring";
+import { checkRateLimit, getRateLimitKey } from "@/lib/rateLimit";
 
 const loginSchema = z.object({
   idToken: z.string().min(1, "ID token is required."),
 });
 
 export async function POST(req: Request) {
+  const limited = checkRateLimit(getRateLimitKey("session_login", req), {
+    limit: 30,
+    windowMs: 60_000,
+  });
+  if (limited) {
+    return NextResponse.json({ error: "Too many requests." }, { status: 429 });
+  }
+
   let json: unknown;
 
   try {

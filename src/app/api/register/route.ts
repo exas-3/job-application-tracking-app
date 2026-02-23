@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { firebaseAdminAuth } from "@/lib/firebase/admin";
 import { log } from "@/lib/logging";
 import { reportError } from "@/lib/monitoring";
+import { checkRateLimit, getRateLimitKey } from "@/lib/rateLimit";
 import { userRepository } from "@/lib/repositories";
 import { registerBodySchema } from "@/lib/validation/auth";
 
@@ -60,6 +61,14 @@ function mapRegistrationError(error: unknown): {
 }
 
 export async function POST(req: Request) {
+  const limited = checkRateLimit(getRateLimitKey("register", req), {
+    limit: 20,
+    windowMs: 60_000,
+  });
+  if (limited) {
+    return NextResponse.json({ error: "Too many requests." }, { status: 429 });
+  }
+
   let json: unknown;
 
   try {
