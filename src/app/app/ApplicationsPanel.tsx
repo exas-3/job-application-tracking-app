@@ -2,6 +2,18 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
+  PointerSensor,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import { CSS } from "@dnd-kit/utilities";
 import { Edit3, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { trackAnalyticsEvent } from "@/lib/firebase/analytics";
@@ -97,6 +109,96 @@ function isApplicationStatus(value: string | null): value is ApplicationStatus {
   return STATUSES.some((status) => status === value);
 }
 
+function DroppableColumn({
+  status,
+  children,
+}: {
+  status: ApplicationStatus;
+  children: React.ReactNode;
+}) {
+  const { isOver, setNodeRef } = useDroppable({
+    id: `column-${status}`,
+  });
+
+  return (
+    <section
+      ref={setNodeRef}
+      className={`rounded-xl border bg-slate-50 p-3 transition ${
+        isOver ? "border-emerald-400 ring-2 ring-emerald-200" : "border-slate-200"
+      }`}
+    >
+      {children}
+    </section>
+  );
+}
+
+function DraggableApplicationCard({
+  item,
+  pendingDeleteId,
+  onEdit,
+  onDelete,
+}: {
+  item: ApplicationItem;
+  pendingDeleteId: string | null;
+  onEdit: (item: ApplicationItem) => void;
+  onDelete: (item: ApplicationItem) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: item.id,
+  });
+  const style = {
+    transform: CSS.Translate.toString(transform),
+  };
+
+  return (
+    <article
+      ref={setNodeRef}
+      style={style}
+      {...listeners}
+      {...attributes}
+      tabIndex={0}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          onEdit(item);
+        }
+      }}
+      className={`rounded-lg border bg-white p-3 outline-none transition-shadow ${
+        isDragging
+          ? "border-emerald-400 shadow-xl ring-2 ring-emerald-200"
+          : "border-slate-200 hover:shadow-md"
+      } focus-visible:ring-2 focus-visible:ring-emerald-500`}
+    >
+      <div className="mb-2">
+        <p className="text-sm font-semibold text-slate-900">{item.company}</p>
+        <p className="mt-1 text-sm text-slate-600">{item.role}</p>
+      </div>
+      <p className="mt-2 text-xs text-slate-500">
+        Updated {new Date(item.updatedAt ?? item.createdAt).toLocaleDateString()}
+      </p>
+      <div className="mt-3 flex gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          aria-label={`Edit ${item.company} ${item.role}`}
+          onClick={() => onEdit(item)}
+        >
+          <Edit3 className="mr-1 h-3.5 w-3.5" /> Edit
+        </Button>
+        <Button
+          size="sm"
+          variant="danger"
+          disabled={pendingDeleteId === item.id}
+          aria-label={`Delete ${item.company} ${item.role}`}
+          onClick={() => onDelete(item)}
+        >
+          <Trash2 className="mr-1 h-3.5 w-3.5" />
+          {pendingDeleteId === item.id ? "Removing" : "Delete"}
+        </Button>
+      </div>
+    </article>
+  );
+}
+
 export function ApplicationsPanel() {
   const router = useRouter();
   const pathname = usePathname();
@@ -116,6 +218,13 @@ export function ApplicationsPanel() {
   const [saving, setSaving] = useState(false);
 
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [activeDragItem, setActiveDragItem] = useState<ApplicationItem | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+  );
 
   const activeStatus = isApplicationStatus(searchParams.get("status"))
     ? searchParams.get("status")
@@ -136,6 +245,16 @@ export function ApplicationsPanel() {
     router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, {
       scroll: false,
     });
+  };
+
+  const resolveDropStatus = (overId: string): ApplicationStatus | null => {
+    if (overId.startsWith("column-")) {
+      const value = overId.replace("column-", "");
+      return isApplicationStatus(value) ? value : null;
+    }
+
+    const overItem = items.find((item) => item.id === overId);
+    return overItem?.status ?? null;
   };
 
   const loadApplications = async ({
@@ -392,6 +511,80 @@ export function ApplicationsPanel() {
     }
   };
 
+  const moveApplicationByDrag = async (
+    itemId: string,
+    fromStatus: ApplicationStatus,
+    toStatus: ApplicationStatus,
+  ) => {
+    if (fromStatus === toStatus) return;
+
+    setItems((prev) =>
+      prev.map((item) =>
+        item.id === itemId
+          ? { ...item, status: toStatus, updatedAt: new Date().toISOString() }
+          : item,
+      ),
+    );
+
+    try {
+      const res = await fetchWithRetry(`/api/applications/${itemId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: toStatus }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error ?? "Failed to move application.");
+      }
+
+      await trackAnalyticsEvent("application_status_drag", {
+        from: fromStatus,
+        to: toStatus,
+      });
+      toast.success(`Moved to ${toStatus}.`);
+    } catch (error) {
+      setItems((prev) =>
+        prev.map((item) =>
+          item.id === itemId ? { ...item, status: fromStatus } : item,
+        ),
+      );
+      const message =
+        error instanceof Error ? error.message : "Failed to move application.";
+      toast.error(message, {
+        action: {
+          label: "Retry",
+          onClick: () => {
+            void moveApplicationByDrag(itemId, fromStatus, toStatus);
+          },
+        },
+      });
+    }
+  };
+
+  const onDragStart = (event: DragStartEvent) => {
+    const id = String(event.active.id);
+    const item = items.find((value) => value.id === id) ?? null;
+    setActiveDragItem(item);
+  };
+
+  const onDragEnd = (event: DragEndEvent) => {
+    if (!event.over || !activeDragItem) {
+      setActiveDragItem(null);
+      return;
+    }
+
+    const overStatus = resolveDropStatus(String(event.over.id));
+    if (overStatus && overStatus !== activeDragItem.status) {
+      void moveApplicationByDrag(
+        activeDragItem.id,
+        activeDragItem.status,
+        overStatus,
+      );
+    }
+
+    setActiveDragItem(null);
+  };
+
   return (
     <section className="space-y-4">
       <Card>
@@ -496,67 +689,57 @@ export function ApplicationsPanel() {
             </div>
           ) : (
             <div className="overflow-x-auto pb-2">
-              <div className="grid min-w-[980px] grid-cols-4 gap-4 xl:grid-cols-8">
-                {STATUSES.map((value) => (
-                  <section key={value} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <div className="sticky top-0 mb-3 flex items-center justify-between gap-2 bg-slate-50 py-1">
-                      <Badge variant={badgeVariantForStatus(value)}>{value}</Badge>
-                      <span className="text-xs font-semibold text-slate-500">
-                        {grouped[value].length}
-                      </span>
-                    </div>
+              <DndContext
+                sensors={sensors}
+                onDragStart={onDragStart}
+                onDragEnd={onDragEnd}
+                onDragCancel={() => setActiveDragItem(null)}
+              >
+                <div className="grid min-w-[980px] grid-cols-4 gap-4 xl:grid-cols-8">
+                  {STATUSES.map((value) => (
+                    <DroppableColumn key={value} status={value}>
+                      <div className="sticky top-0 mb-3 flex items-center justify-between gap-2 bg-slate-50 py-1">
+                        <Badge variant={badgeVariantForStatus(value)}>{value}</Badge>
+                        <span className="text-xs font-semibold text-slate-500">
+                          {grouped[value].length}
+                        </span>
+                      </div>
 
-                    <div className="space-y-2">
-                      {grouped[value].length === 0 ? (
-                        <p className="rounded-md border border-dashed border-slate-300 px-2 py-3 text-center text-xs text-slate-500">
-                          No cards
-                        </p>
-                      ) : null}
-
-                      {grouped[value].map((item) => (
-                        <article
-                          key={item.id}
-                          tabIndex={0}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") {
-                              openEdit(item);
-                            }
-                          }}
-                          className="rounded-lg border border-slate-200 bg-white p-3 outline-none transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-emerald-500"
-                        >
-                          <p className="text-sm font-semibold text-slate-900">{item.company}</p>
-                          <p className="mt-1 text-sm text-slate-600">{item.role}</p>
-                          <p className="mt-2 text-xs text-slate-500">
-                            Updated {new Date(item.updatedAt ?? item.createdAt).toLocaleDateString()}
+                      <div className="space-y-2">
+                        {grouped[value].length === 0 ? (
+                          <p className="rounded-md border border-dashed border-slate-300 px-2 py-3 text-center text-xs text-slate-500">
+                            Drag cards here
                           </p>
-                          <div className="mt-3 flex gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              aria-label={`Edit ${item.company} ${item.role}`}
-                              onClick={() => openEdit(item)}
-                            >
-                              <Edit3 className="mr-1 h-3.5 w-3.5" /> Edit
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="danger"
-                              disabled={pendingDeleteId === item.id}
-                              aria-label={`Delete ${item.company} ${item.role}`}
-                              onClick={() => {
-                                void runDelete(item);
-                              }}
-                            >
-                              <Trash2 className="mr-1 h-3.5 w-3.5" />
-                              {pendingDeleteId === item.id ? "Removing" : "Delete"}
-                            </Button>
-                          </div>
-                        </article>
-                      ))}
-                    </div>
-                  </section>
-                ))}
-              </div>
+                        ) : null}
+
+                        {grouped[value].map((item) => (
+                          <DraggableApplicationCard
+                            key={item.id}
+                            item={item}
+                            pendingDeleteId={pendingDeleteId}
+                            onEdit={openEdit}
+                            onDelete={(target) => {
+                              void runDelete(target);
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </DroppableColumn>
+                  ))}
+                </div>
+                <DragOverlay>
+                  {activeDragItem ? (
+                    <article className="w-64 rounded-lg border border-emerald-300 bg-white p-3 shadow-2xl">
+                      <p className="text-sm font-semibold text-slate-900">
+                        {activeDragItem.company}
+                      </p>
+                      <p className="mt-1 text-sm text-slate-600">
+                        {activeDragItem.role}
+                      </p>
+                    </article>
+                  ) : null}
+                </DragOverlay>
+              </DndContext>
             </div>
           )}
 
