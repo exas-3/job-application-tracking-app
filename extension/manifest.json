@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Job Tracker Assistant",
+  "version": "0.1.0",
+  "description": "Extracts job details from LinkedIn and opens Job Tracker with prefilled fields.",
+  "action": {
+    "default_title": "Job Tracker Assistant",
+    "default_popup": "popup.html"
+  },
+  "permissions": ["activeTab", "storage", "tabs", "scripting"],
+  "host_permissions": [
+    "https://www.linkedin.com/*",
+    "http://localhost:3000/*",
+    "https://job-application-tracking-app.vercel.app/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://www.linkedin.com/jobs/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

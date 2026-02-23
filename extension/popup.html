@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Job Tracker Assistant</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>Job Tracker Assistant</h1>
+      <p id="status" class="status">Open a LinkedIn job tab, then refresh extract.</p>
+
+      <label>
+        App URL
+        <input id="appUrl" type="url" placeholder="http://localhost:3000" />
+      </label>
+
+      <label>
+        Role
+        <input id="role" type="text" />
+      </label>
+
+      <label>
+        Company
+        <input id="company" type="text" />
+      </label>
+
+      <label>
+        Location
+        <input id="location" type="text" />
+      </label>
+
+      <label>
+        Job URL
+        <input id="jobUrl" type="url" />
+      </label>
+
+      <label>
+        Job Text
+        <textarea id="jobText" rows="6"></textarea>
+      </label>
+
+      <div class="actions">
+        <button id="refresh" type="button">Refresh Extract</button>
+        <button id="open" type="button">Open in App</button>
+        <button id="create" type="button" class="primary">Create in DB</button>
+      </div>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

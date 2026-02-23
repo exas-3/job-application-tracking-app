@@ -88,6 +88,14 @@ type EnrichmentResponse = {
   warnings: string[];
 };
 
+type ImportPrefillPayload = {
+  company: string;
+  role: string;
+  location: string;
+  jobUrl: string;
+  jobText: string;
+};
+
 async function wait(ms: number) {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -283,6 +291,123 @@ export function ApplicationsPanel() {
       scroll: false,
     });
   };
+
+  const getImportPayloadFromSearch = (): ImportPrefillPayload | null => {
+    const hasImportMarker = searchParams.get("import");
+    if (!hasImportMarker) return null;
+
+    return {
+      company: searchParams.get("import_company") ?? "",
+      role: searchParams.get("import_role") ?? "",
+      location: searchParams.get("import_location") ?? "",
+      jobUrl: searchParams.get("import_job_url") ?? "",
+      jobText: searchParams.get("import_job_text") ?? "",
+    };
+  };
+
+  const clearImportQueryParams = () => {
+    const importKeys = [
+      "import",
+      "import_autocreate",
+      "import_company",
+      "import_role",
+      "import_location",
+      "import_job_url",
+      "import_job_text",
+    ] as const;
+
+    const next = new URLSearchParams(searchParams.toString());
+    for (const key of importKeys) {
+      next.delete(key);
+    }
+    const nextQuery = next.toString();
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, {
+      scroll: false,
+    });
+  };
+
+  const openCreateWithImportPayload = (payload: ImportPrefillPayload) => {
+    setDialogMode("create");
+    setEditing(null);
+    setStatus("SAVED");
+    setInsightSummary(null);
+    setCompany(payload.company);
+    setRole(payload.role);
+    setLocation(payload.location);
+    setJobUrl(payload.jobUrl);
+    setLinkedinUrl(payload.jobUrl);
+    setImportJobText(payload.jobText);
+  };
+
+  const autoCreateFromImportPayload = async (payload: ImportPrefillPayload) => {
+    const normalizedCompany = payload.company.trim();
+    const normalizedRole = payload.role.trim();
+    if (!normalizedCompany || !normalizedRole) {
+      openCreateWithImportPayload(payload);
+      toast.warning("Missing company or role. Review and create manually.");
+      return;
+    }
+
+    const res = await fetchWithRetry("/api/applications", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        company: normalizedCompany,
+        role: normalizedRole,
+        status: "SAVED",
+        jobUrl: normalizeOptional(payload.jobUrl),
+        location: normalizeOptional(payload.location),
+      }),
+    });
+
+    const data = (await res.json()) as {
+      error?: string;
+      application?: ApplicationItem;
+    };
+
+    if (!res.ok || !data.application) {
+      throw new Error(data.error ?? "Failed to create application from import.");
+    }
+
+    setItems((prev) => [data.application!, ...prev]);
+    toast.success("Application created from extension.");
+    await trackAnalyticsEvent("application_created_from_extension");
+  };
+
+  useEffect(() => {
+    const payload = getImportPayloadFromSearch();
+    if (!payload) return;
+
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const shouldAutoCreate = searchParams.get("import_autocreate") === "1";
+        if (shouldAutoCreate) {
+          await autoCreateFromImportPayload(payload);
+        } else {
+          openCreateWithImportPayload(payload);
+        }
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Failed to create application from extension.";
+        toast.error(message);
+        openCreateWithImportPayload(payload);
+      } finally {
+        if (!cancelled) {
+          clearImportQueryParams();
+        }
+      }
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const resolveDropStatus = (overId: string): ApplicationStatus | null => {
     if (overId.startsWith("column-")) {
