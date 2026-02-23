@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentSession } from "@/lib/auth/session";
+import { ApplicationsPanel } from "./ApplicationsPanel";
 import { LogoutButton } from "./LogoutButton";
 
 export default async function AppHome() {
@@ -10,6 +11,7 @@ export default async function AppHome() {
     <main style={{ padding: 24 }}>
       <h1 style={{ fontSize: 24, fontWeight: 600 }}>Dashboard</h1>
       <pre style={{ marginTop: 16 }}>{JSON.stringify(session, null, 2)}</pre>
+      <ApplicationsPanel />
       <LogoutButton />
     </main>
   );

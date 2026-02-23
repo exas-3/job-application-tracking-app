@@ -22,6 +22,7 @@ Copy `.env.example` to `.env` and set all Firebase values:
 - `FIREBASE_PROJECT_ID`
 - `FIREBASE_CLIENT_EMAIL`
 - `FIREBASE_PRIVATE_KEY` (use escaped newlines: `\n`)
+- `SENTRY_DSN` (optional, for server-side error monitoring)
 
 ## Auth model
 

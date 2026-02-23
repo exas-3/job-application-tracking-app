@@ -1,6 +1,7 @@
 "use client";
 
 import { signInWithEmailAndPassword } from "firebase/auth";
+import { trackAnalyticsEvent } from "@/lib/firebase/analytics";
 import { firebaseAuth } from "@/lib/firebase/client";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -41,6 +42,7 @@ export function LoginForm() {
               return;
             }
 
+            await trackAnalyticsEvent("login", { method: "password" });
             setLoading(false);
             router.push("/app");
           } catch {

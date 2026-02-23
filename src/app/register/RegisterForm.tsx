@@ -1,6 +1,7 @@
 "use client";
 
 import { signInWithEmailAndPassword } from "firebase/auth";
+import { trackAnalyticsEvent } from "@/lib/firebase/analytics";
 import { firebaseAuth } from "@/lib/firebase/client";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -58,6 +59,8 @@ export function RegisterForm() {
               return;
             }
 
+            await trackAnalyticsEvent("sign_up", { method: "password" });
+            await trackAnalyticsEvent("login", { method: "password" });
             router.push("/app");
           } catch {
             setErr("Something went wrong. Please try again.");

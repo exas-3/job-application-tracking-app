@@ -36,4 +36,10 @@ export type CreateApplicationInput = {
 export interface ApplicationRepository {
   listByUserId(userId: string): Promise<ApplicationEntity[]>;
   create(input: CreateApplicationInput): Promise<ApplicationEntity>;
+  updateByIdForUser(
+    id: string,
+    userId: string,
+    input: Partial<Omit<CreateApplicationInput, "userId">>,
+  ): Promise<ApplicationEntity | null>;
+  deleteByIdForUser(id: string, userId: string): Promise<boolean>;
 }

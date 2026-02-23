@@ -5,6 +5,8 @@ import {
   type QueryDocumentSnapshot,
 } from "firebase-admin/firestore";
 import { firebaseAdminDb } from "@/lib/firebase/admin";
+import { log } from "@/lib/logging";
+import { reportError } from "@/lib/monitoring";
 import type {
   ApplicationEntity,
   ApplicationRepository,
@@ -44,37 +46,129 @@ function mapApplication(
 
 export class FirestoreApplicationRepository implements ApplicationRepository {
   async listByUserId(userId: string): Promise<ApplicationEntity[]> {
-    const query = await firebaseAdminDb
-      .collection(APPLICATIONS_COLLECTION)
-      .where("userId", "==", userId)
-      .orderBy("createdAt", "desc")
-      .get();
+    try {
+      const query = await firebaseAdminDb
+        .collection(APPLICATIONS_COLLECTION)
+        .where("userId", "==", userId)
+        .orderBy("createdAt", "desc")
+        .get();
 
-    return query.docs.map((doc: QueryDocumentSnapshot<DocumentData>) =>
-      mapApplication(doc),
-    );
+      return query.docs.map((doc: QueryDocumentSnapshot<DocumentData>) =>
+        mapApplication(doc),
+      );
+    } catch (error) {
+      reportError("firestore.application.list_failed", error, { userId });
+      const details = error as { code?: string | number; message?: string };
+      log.error("firestore.application.list_failed", {
+        userId,
+        code: details.code ?? null,
+        message: details.message ?? "unknown",
+      });
+      throw error;
+    }
   }
 
   async create(input: CreateApplicationInput): Promise<ApplicationEntity> {
-    const ref = firebaseAdminDb.collection(APPLICATIONS_COLLECTION).doc();
-    await ref.set({
-      userId: input.userId,
-      company: input.company,
-      role: input.role,
-      status: input.status ?? "SAVED",
-      jobUrl: input.jobUrl ?? null,
-      location: input.location ?? null,
-      appliedAt: input.appliedAt ?? null,
-      nextFollowUp: input.nextFollowUp ?? null,
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    try {
+      const ref = firebaseAdminDb.collection(APPLICATIONS_COLLECTION).doc();
+      await ref.set({
+        userId: input.userId,
+        company: input.company,
+        role: input.role,
+        status: input.status ?? "SAVED",
+        jobUrl: input.jobUrl ?? null,
+        location: input.location ?? null,
+        appliedAt: input.appliedAt ?? null,
+        nextFollowUp: input.nextFollowUp ?? null,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
 
-    const snapshot = await ref.get();
-    if (!snapshot.exists) {
-      throw new Error("Failed to create application document");
+      const snapshot = await ref.get();
+      if (!snapshot.exists) {
+        throw new Error("Failed to create application document");
+      }
+
+      return mapApplication(snapshot as QueryDocumentSnapshot<DocumentData>);
+    } catch (error) {
+      reportError("firestore.application.create_failed", error, {
+        userId: input.userId,
+      });
+      const details = error as { code?: string | number; message?: string };
+      log.error("firestore.application.create_failed", {
+        userId: input.userId,
+        code: details.code ?? null,
+        message: details.message ?? "unknown",
+      });
+      throw error;
     }
+  }
 
-    return mapApplication(snapshot as QueryDocumentSnapshot<DocumentData>);
+  async updateByIdForUser(
+    id: string,
+    userId: string,
+    input: Partial<Omit<CreateApplicationInput, "userId">>,
+  ): Promise<ApplicationEntity | null> {
+    try {
+      const ref = firebaseAdminDb.collection(APPLICATIONS_COLLECTION).doc(id);
+      const existing = await ref.get();
+      if (!existing.exists) return null;
+
+      const data = existing.data();
+      if (!data || data.userId !== userId) return null;
+
+      const updateData: Record<string, unknown> = {
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+
+      if (input.company !== undefined) updateData.company = input.company;
+      if (input.role !== undefined) updateData.role = input.role;
+      if (input.status !== undefined) updateData.status = input.status;
+      if (input.jobUrl !== undefined) updateData.jobUrl = input.jobUrl;
+      if (input.location !== undefined) updateData.location = input.location;
+      if (input.appliedAt !== undefined) updateData.appliedAt = input.appliedAt;
+      if (input.nextFollowUp !== undefined) {
+        updateData.nextFollowUp = input.nextFollowUp;
+      }
+
+      await ref.update(updateData);
+      const snapshot = await ref.get();
+      if (!snapshot.exists) return null;
+      return mapApplication(snapshot as QueryDocumentSnapshot<DocumentData>);
+    } catch (error) {
+      reportError("firestore.application.update_failed", error, { id, userId });
+      const details = error as { code?: string | number; message?: string };
+      log.error("firestore.application.update_failed", {
+        id,
+        userId,
+        code: details.code ?? null,
+        message: details.message ?? "unknown",
+      });
+      throw error;
+    }
+  }
+
+  async deleteByIdForUser(id: string, userId: string): Promise<boolean> {
+    try {
+      const ref = firebaseAdminDb.collection(APPLICATIONS_COLLECTION).doc(id);
+      const existing = await ref.get();
+      if (!existing.exists) return false;
+
+      const data = existing.data();
+      if (!data || data.userId !== userId) return false;
+
+      await ref.delete();
+      return true;
+    } catch (error) {
+      reportError("firestore.application.delete_failed", error, { id, userId });
+      const details = error as { code?: string | number; message?: string };
+      log.error("firestore.application.delete_failed", {
+        id,
+        userId,
+        code: details.code ?? null,
+        message: details.message ?? "unknown",
+      });
+      throw error;
+    }
   }
 }

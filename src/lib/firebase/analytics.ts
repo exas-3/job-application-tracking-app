@@ -24,3 +24,13 @@ export async function trackPageView(pagePath: string) {
 
   logEvent(analytics, "page_view", { page_path: pagePath });
 }
+
+export async function trackAnalyticsEvent(
+  name: string,
+  params: Record<string, string | number | boolean> = {},
+) {
+  const analytics = await getFirebaseAnalytics();
+  if (!analytics) return;
+
+  logEvent(analytics, name, params);
+}
