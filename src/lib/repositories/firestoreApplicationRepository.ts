@@ -11,6 +11,8 @@ import type {
   ApplicationEntity,
   ApplicationRepository,
   CreateApplicationInput,
+  ListApplicationsOptions,
+  ListApplicationsResult,
 } from "@/lib/repositories/applicationRepository";
 
 const APPLICATIONS_COLLECTION = "applications";
@@ -45,17 +47,41 @@ function mapApplication(
 }
 
 export class FirestoreApplicationRepository implements ApplicationRepository {
-  async listByUserId(userId: string): Promise<ApplicationEntity[]> {
+  async listByUserId(
+    userId: string,
+    options: ListApplicationsOptions = {},
+  ): Promise<ListApplicationsResult> {
     try {
-      const query = await firebaseAdminDb
+      const rawLimit = options.limit ?? 20;
+      const limit = Math.min(Math.max(rawLimit, 1), 100);
+      let queryRef = firebaseAdminDb
         .collection(APPLICATIONS_COLLECTION)
-        .where("userId", "==", userId)
-        .orderBy("createdAt", "desc")
-        .get();
+        .where("userId", "==", userId) as FirebaseFirestore.Query<FirebaseFirestore.DocumentData>;
 
-      return query.docs.map((doc: QueryDocumentSnapshot<DocumentData>) =>
+      if (options.status) {
+        queryRef = queryRef.where("status", "==", options.status);
+      }
+
+      queryRef = queryRef.orderBy("createdAt", "desc");
+
+      if (options.cursor) {
+        const cursorDate = new Date(Number(options.cursor));
+        if (!Number.isNaN(cursorDate.getTime())) {
+          queryRef = queryRef.startAfter(cursorDate);
+        }
+      }
+
+      const query = await queryRef.limit(limit + 1).get();
+
+      const mapped = query.docs.map((doc: QueryDocumentSnapshot<DocumentData>) =>
         mapApplication(doc),
       );
+      const hasMore = mapped.length > limit;
+      const items = hasMore ? mapped.slice(0, limit) : mapped;
+      const last = items[items.length - 1];
+      const nextCursor = hasMore && last ? String(last.createdAt.getTime()) : null;
+
+      return { items, nextCursor };
     } catch (error) {
       reportError("firestore.application.list_failed", error, { userId });
       const details = error as { code?: string | number; message?: string };

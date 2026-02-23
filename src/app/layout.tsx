@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { FirebaseAnalytics } from "./FirebaseAnalytics";
@@ -28,7 +29,9 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         {children}
-        <FirebaseAnalytics />
+        <Suspense fallback={null}>
+          <FirebaseAnalytics />
+        </Suspense>
         <Toaster richColors position="top-right" />
       </body>
     </html>

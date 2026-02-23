@@ -5,6 +5,7 @@ import { reportError } from "@/lib/monitoring";
 import type { ApplicationRepository } from "@/lib/repositories/applicationRepository";
 import {
   createApplicationSchema,
+  listApplicationsQuerySchema,
   updateApplicationSchema,
 } from "@/lib/validation/application";
 
@@ -15,15 +16,41 @@ type Dependencies = {
   repository: ApplicationRepository;
 };
 
-export async function listApplications(deps: Dependencies) {
+export async function listApplications(req: Request, deps: Dependencies) {
   const session = await deps.getSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const url = new URL(req.url);
+  const query = {
+    status: url.searchParams.get("status") ?? undefined,
+    limit: url.searchParams.get("limit") ?? undefined,
+    cursor: url.searchParams.get("cursor") ?? undefined,
+  };
+  const parsedQuery = listApplicationsQuerySchema.safeParse(query);
+  if (!parsedQuery.success) {
+    return NextResponse.json(
+      {
+        error:
+          parsedQuery.error.issues[0]?.message ?? "Invalid query parameters.",
+      },
+      { status: 400 },
+    );
+  }
+
   try {
-    const items = await deps.repository.listByUserId(session.uid);
-    return NextResponse.json({ applications: items });
+    const result = await deps.repository.listByUserId(
+      session.uid,
+      parsedQuery.data,
+    );
+    return NextResponse.json({
+      applications: result.items,
+      pageInfo: {
+        nextCursor: result.nextCursor,
+        limit: parsedQuery.data.limit ?? 20,
+      },
+    });
   } catch (error) {
     reportError("applications.list_failed", error, { uid: session.uid });
     return NextResponse.json(

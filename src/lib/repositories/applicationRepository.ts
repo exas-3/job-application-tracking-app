@@ -33,8 +33,22 @@ export type CreateApplicationInput = {
   nextFollowUp?: Date | null;
 };
 
+export type ListApplicationsOptions = {
+  status?: ApplicationStatus;
+  limit?: number;
+  cursor?: string;
+};
+
+export type ListApplicationsResult = {
+  items: ApplicationEntity[];
+  nextCursor: string | null;
+};
+
 export interface ApplicationRepository {
-  listByUserId(userId: string): Promise<ApplicationEntity[]>;
+  listByUserId(
+    userId: string,
+    options?: ListApplicationsOptions,
+  ): Promise<ListApplicationsResult>;
   create(input: CreateApplicationInput): Promise<ApplicationEntity>;
   updateByIdForUser(
     id: string,

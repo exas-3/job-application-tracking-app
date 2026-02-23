@@ -13,7 +13,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Too many requests." }, { status: 429 });
   }
 
-  return listApplications({
+  return listApplications(req, {
     getSession: getCurrentSession,
     repository: applicationRepository,
   });

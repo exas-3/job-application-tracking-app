@@ -39,3 +39,12 @@ export const updateApplicationSchema = z
   .refine((value) => Object.keys(value).length > 0, {
     message: "At least one field is required.",
   });
+
+export const listApplicationsQuerySchema = z.object({
+  status: statusSchema.optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  cursor: z
+    .string()
+    .regex(/^\d+$/, "Invalid cursor.")
+    .optional(),
+});

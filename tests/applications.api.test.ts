@@ -10,6 +10,8 @@ import type {
   ApplicationEntity,
   ApplicationRepository,
   CreateApplicationInput,
+  ListApplicationsOptions,
+  ListApplicationsResult,
 } from "@/lib/repositories/applicationRepository";
 
 const now = new Date("2026-02-23T00:00:00.000Z");
@@ -35,8 +37,14 @@ function fakeApplication(
 
 function createRepositoryMock(): ApplicationRepository {
   return {
-    async listByUserId() {
-      return [fakeApplication()];
+    async listByUserId(_userId: string, options?: ListApplicationsOptions) {
+      const limit = options?.limit ?? 20;
+      const items = [fakeApplication()].slice(0, limit);
+      const result: ListApplicationsResult = {
+        items,
+        nextCursor: options?.cursor ? null : String(now.getTime()),
+      };
+      return result;
     },
     async create(input: CreateApplicationInput) {
       return fakeApplication({ userId: input.userId });
@@ -52,12 +60,44 @@ function createRepositoryMock(): ApplicationRepository {
 }
 
 test("applications GET returns 401 when unauthenticated", async () => {
-  const res = await listApplications({
+  const res = await listApplications(new Request("http://localhost/api/applications"), {
     getSession: async () => null,
     repository: createRepositoryMock(),
   });
 
   assert.equal(res.status, 401);
+});
+
+test("applications GET rejects invalid query params", async () => {
+  const res = await listApplications(
+    new Request("http://localhost/api/applications?limit=9999"),
+    {
+      getSession: async () => ({ uid: "user-1", email: null, name: null }),
+      repository: createRepositoryMock(),
+    },
+  );
+
+  assert.equal(res.status, 400);
+});
+
+test("applications GET returns pageInfo with nextCursor", async () => {
+  const res = await listApplications(
+    new Request(
+      "http://localhost/api/applications?status=SAVED&limit=1&cursor=1708646400000",
+    ),
+    {
+      getSession: async () => ({ uid: "user-1", email: null, name: null }),
+      repository: createRepositoryMock(),
+    },
+  );
+
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as {
+    applications: ApplicationEntity[];
+    pageInfo: { nextCursor: string | null; limit: number };
+  };
+  assert.equal(body.applications.length, 1);
+  assert.equal(body.pageInfo.limit, 1);
 });
 
 test("applications POST creates with authenticated user", async () => {

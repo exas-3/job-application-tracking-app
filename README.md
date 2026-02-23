@@ -32,3 +32,14 @@ Copy `.env.example` to `.env` and set all Firebase values:
 - Client sends ID token to `/api/session/login`.
 - Server creates an HTTP-only Firebase session cookie.
 - Protected pages/API verify the session cookie with Firebase Admin SDK.
+
+## Applications API
+
+- `GET /api/applications`
+: Supports query params `status`, `limit` (1-100), `cursor` (epoch ms string).
+- `POST /api/applications`
+: Creates an application for the authenticated user.
+- `PATCH /api/applications/:id`
+: Updates fields for an owned application.
+- `DELETE /api/applications/:id`
+: Deletes an owned application.
