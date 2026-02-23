@@ -14,7 +14,7 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { Edit3, Link2, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+import { Edit3, Link2, Plus, RefreshCw, Search, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { trackAnalyticsEvent } from "@/lib/firebase/analytics";
 import { Badge } from "@/components/ui/badge";
@@ -69,6 +69,23 @@ type LinkedInImportResponse = {
     jobUrl: string | null;
     warnings: string[];
   };
+};
+
+type EnrichmentResponse = {
+  fields: {
+    company: string | null;
+    role: string | null;
+    location: string | null;
+    employmentType: "FULL_TIME" | "PART_TIME" | "CONTRACT" | "INTERNSHIP" | "OTHER" | null;
+    seniority: "INTERN" | "JUNIOR" | "MID" | "SENIOR" | "LEAD" | "UNKNOWN" | null;
+    remoteType: "REMOTE" | "HYBRID" | "ONSITE" | "UNKNOWN" | null;
+    salaryMin: number | null;
+    salaryMax: number | null;
+    currency: string | null;
+    skills: string[];
+  };
+  source: "ai" | "heuristic";
+  warnings: string[];
 };
 
 async function wait(ms: number) {
@@ -233,6 +250,8 @@ export function ApplicationsPanel() {
   const [linkedinUrl, setLinkedinUrl] = useState("");
   const [importJobText, setImportJobText] = useState("");
   const [importing, setImporting] = useState(false);
+  const [enriching, setEnriching] = useState(false);
+  const [insightSummary, setInsightSummary] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
@@ -373,6 +392,7 @@ export function ApplicationsPanel() {
     setLocation("");
     setLinkedinUrl("");
     setImportJobText("");
+    setInsightSummary(null);
   };
 
   const openEdit = (item: ApplicationItem) => {
@@ -385,6 +405,7 @@ export function ApplicationsPanel() {
     setLocation(item.location ?? "");
     setLinkedinUrl(item.jobUrl ?? "");
     setImportJobText("");
+    setInsightSummary(null);
   };
 
   const normalizeOptional = (value: string): string | null => {
@@ -568,6 +589,76 @@ export function ApplicationsPanel() {
       toast.error(message);
     } finally {
       setImporting(false);
+    }
+  };
+
+  const enrichFromJobText = async () => {
+    const normalizedText = importJobText.trim();
+    if (normalizedText.length < 20) {
+      toast.error("Paste a larger job description text first.");
+      return;
+    }
+
+    setEnriching(true);
+    setInsightSummary(null);
+    try {
+      const res = await fetchWithRetry("/api/applications/import/enrich", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          linkedinUrl: linkedinUrl.trim() || undefined,
+          jobText: normalizedText,
+        }),
+      });
+
+      const payload = (await res.json()) as {
+        error?: string;
+      } & Partial<EnrichmentResponse>;
+
+      if (!res.ok || !payload.fields || !payload.source || !payload.warnings) {
+        throw new Error(payload.error ?? "Failed to enrich job description.");
+      }
+
+      const { fields } = payload;
+      if (fields.company) setCompany(fields.company);
+      if (fields.role) setRole(fields.role);
+      if (fields.location) setLocation(fields.location);
+      if (!jobUrl && linkedinUrl.trim()) setJobUrl(linkedinUrl.trim());
+
+      const parts = [
+        fields.employmentType ? `Type: ${fields.employmentType}` : null,
+        fields.seniority ? `Level: ${fields.seniority}` : null,
+        fields.remoteType ? `Mode: ${fields.remoteType}` : null,
+        fields.salaryMin && fields.salaryMax
+          ? `Salary: ${fields.salaryMin}-${fields.salaryMax}${fields.currency ? ` ${fields.currency}` : ""}`
+          : null,
+        fields.skills.length > 0 ? `Skills: ${fields.skills.slice(0, 6).join(", ")}` : null,
+      ]
+        .filter(Boolean)
+        .join(" | ");
+
+      setInsightSummary(parts.length > 0 ? parts : null);
+
+      if (payload.warnings.length > 0) {
+        toast.warning(payload.warnings[0] ?? "Enrichment completed with warnings.");
+      } else {
+        toast.success(
+          payload.source === "ai"
+            ? "AI enrichment completed."
+            : "Heuristic enrichment completed.",
+        );
+      }
+      await trackAnalyticsEvent("application_enrich_job_text", {
+        source: payload.source,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to enrich job description.";
+      toast.error(message);
+    } finally {
+      setEnriching(false);
     }
   };
 
@@ -918,6 +1009,17 @@ export function ApplicationsPanel() {
               <div className="flex justify-end">
                 <Button
                   type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    void enrichFromJobText();
+                  }}
+                  disabled={saving || enriching}
+                >
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  {enriching ? "Enriching..." : "AI Enrich"}
+                </Button>
+                <Button
+                  type="button"
                   variant="outline"
                   onClick={() => {
                     void importFromLinkedIn();
@@ -927,6 +1029,9 @@ export function ApplicationsPanel() {
                   {importing ? "Importing..." : "Autofill"}
                 </Button>
               </div>
+              {insightSummary ? (
+                <p className="text-xs text-slate-600">{insightSummary}</p>
+              ) : null}
             </section>
           ) : null}
 

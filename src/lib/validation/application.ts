@@ -64,3 +64,24 @@ export const importLinkedInSchema = z.object({
     }, "Only linkedin.com URLs are supported."),
   jobText: z.string().trim().max(12000).optional(),
 });
+
+export const importEnrichSchema = z.object({
+  linkedinUrl: z
+    .string()
+    .trim()
+    .url("LinkedIn URL is invalid.")
+    .refine((value) => {
+      try {
+        const url = new URL(value);
+        return url.hostname.endsWith("linkedin.com");
+      } catch {
+        return false;
+      }
+    }, "Only linkedin.com URLs are supported.")
+    .optional(),
+  jobText: z
+    .string()
+    .trim()
+    .min(20, "Job text is too short for enrichment.")
+    .max(12000),
+});

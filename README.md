@@ -9,6 +9,7 @@ This app demonstrates:
 - Secure auth flow with Firebase Auth + HTTP-only session cookies
 - Firestore data modeling, rules, and indexes
 - Kanban workflow with drag-and-drop status updates
+- LinkedIn import with optional AI enrichment fallback
 - Production-minded API patterns (validation, rate limiting, tests, CI/CD)
 
 ## Tech Stack
@@ -20,7 +21,7 @@ This app demonstrates:
 - Tailwind CSS v4
 - dnd-kit
 - Zod validation
-- GitHub Actions + Vercel deploy workflows
+- GitHub Actions
 
 ## Scope
 
@@ -101,6 +102,11 @@ You can use the live deployment instead:
 - `SENTRY_ORG`
 - `SENTRY_PROJECT`
 
+### AI Enrichment (optional)
+
+- `OPENAI_API_KEY`
+- `OPENAI_MODEL` (defaults to `gpt-4o-mini`)
+
 ## Where to Get Firebase Values
 
 Use Firebase Console:
@@ -149,6 +155,8 @@ Rules and indexes live in:
 - `GET /api/health` - authenticated health check
 - `GET /api/applications?status=&limit=&cursor=` - list user-owned applications
 - `POST /api/applications` - create application
+- `POST /api/applications/import` - import from LinkedIn URL + optional pasted text
+- `POST /api/applications/import/enrich` - enrich pasted job text with AI (falls back to heuristics)
 - `PATCH /api/applications/:id` - update application if owned by user
 - `DELETE /api/applications/:id` - delete application if owned by user
 
@@ -180,20 +188,13 @@ GitHub Actions workflows:
 - `CI` (`.github/workflows/ci.yml`)
   - lint, typecheck, tests
   - optional build when `RUN_BUILD_CHECK=true`
-- `Deploy Preview` (`.github/workflows/deploy-preview.yml`)
-  - PR preview deploy to Vercel (skips when Vercel secrets are missing)
-- `Deploy Production` (`.github/workflows/deploy-prod.yml`)
-  - deploy on `main` push (skips when Vercel secrets are missing)
 - `Deploy Firestore Config` (`.github/workflows/firestore-deploy.yml`)
   - deploy rules/indexes on config changes (skips when Firebase secrets are missing)
 - `Security` and `Release Tag Deploy`
 
-### Required GitHub Secrets for Deploys
+Production app deploys are handled by Vercel Git integration on pushes to `main`.
 
-Vercel:
-- `VERCEL_TOKEN`
-- `VERCEL_ORG_ID`
-- `VERCEL_PROJECT_ID`
+### Required GitHub Secrets for Deploys
 
 Firebase:
 - `FIREBASE_PROJECT_ID`
