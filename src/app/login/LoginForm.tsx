@@ -1,8 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { signInWithEmailAndPassword } from "firebase/auth";
+import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { trackAnalyticsEvent } from "@/lib/firebase/analytics";
 import { firebaseAuth } from "@/lib/firebase/client";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -10,79 +16,88 @@ export function LoginForm() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   return (
-    <main style={{ maxWidth: 420, margin: "48px auto", padding: 16 }}>
-      <h1 style={{ fontSize: 24, fontWeight: 600 }}>Login</h1>
+    <main className="mx-auto flex min-h-screen w-full max-w-md items-center px-4 py-8">
+      <Card className="w-full">
+        <CardHeader>
+          <CardTitle>Welcome back</CardTitle>
+          <CardDescription>Sign in to continue managing your pipeline.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form
+            className="grid gap-4"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setLoading(true);
 
-      <form
-        onSubmit={async (e) => {
-          e.preventDefault();
-          setErr(null);
-          setLoading(true);
+              try {
+                const credential = await signInWithEmailAndPassword(
+                  firebaseAuth,
+                  email,
+                  password,
+                );
+                const idToken = await credential.user.getIdToken();
+                const sessionRes = await fetch("/api/session/login", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ idToken }),
+                });
 
-          try {
-            const credential = await signInWithEmailAndPassword(
-              firebaseAuth,
-              email,
-              password,
-            );
-            const idToken = await credential.user.getIdToken();
-            const sessionRes = await fetch("/api/session/login", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ idToken }),
-            });
+                if (!sessionRes.ok) {
+                  toast.error("Unable to create session. Please try again.");
+                  setLoading(false);
+                  return;
+                }
 
-            if (!sessionRes.ok) {
-              setErr("Unable to create session. Please try again.");
-              setLoading(false);
-              return;
-            }
+                await trackAnalyticsEvent("login", { method: "password" });
+                toast.success("Logged in successfully.");
+                router.push("/app");
+              } catch {
+                toast.error("Invalid email or password.");
+              } finally {
+                setLoading(false);
+              }
+            }}
+          >
+            <Input
+              placeholder="Email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoComplete="email"
+            />
 
-            await trackAnalyticsEvent("login", { method: "password" });
-            setLoading(false);
-            router.push("/app");
-          } catch {
-            setErr("Invalid email or password.");
-            setLoading(false);
-          }
-        }}
-        style={{ display: "grid", gap: 12, marginTop: 16 }}
-      >
-        <input
-          placeholder="Email"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-          autoComplete="email"
-        />
+            <Input
+              placeholder="Password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoComplete="current-password"
+            />
 
-        <input
-          placeholder="Password"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          autoComplete="current-password"
-        />
+            <Button type="submit" disabled={loading}>
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Logging in...
+                </>
+              ) : (
+                "Login"
+              )}
+            </Button>
 
-        {err && <p style={{ color: "crimson" }}>{err}</p>}
-
-        <button type="submit" disabled={loading}>
-          {loading ? "Logging in..." : "Login"}
-        </button>
-
-        <p style={{ fontSize: 14 }}>
-          No account?{" "}
-          <a href="/register" style={{ textDecoration: "underline" }}>
-            Create one
-          </a>
-        </p>
-      </form>
+            <p className="text-sm text-slate-600">
+              No account?{" "}
+              <Link href="/register" className="font-medium text-emerald-700 hover:underline">
+                Create one
+              </Link>
+            </p>
+          </form>
+        </CardContent>
+      </Card>
     </main>
   );
 }
