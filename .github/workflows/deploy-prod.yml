@@ -9,6 +9,10 @@ jobs:
   deploy-prod:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
     steps:
       - name: Checkout
@@ -23,20 +27,24 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Check deploy prerequisites
+        id: precheck
+        run: |
+          if [ -n "$VERCEL_TOKEN" ] && [ -n "$VERCEL_ORG_ID" ] && [ -n "$VERCEL_PROJECT_ID" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping production deploy: missing one or more Vercel secrets."
+          fi
+
       - name: Pull Vercel environment (production)
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-        run: npx vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+        if: steps.precheck.outputs.ready == 'true'
+        run: npx vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
 
       - name: Build Vercel artifacts
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-        run: npx vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+        if: steps.precheck.outputs.ready == 'true'
+        run: npx vercel build --prod --token="$VERCEL_TOKEN"
 
       - name: Deploy to production
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-        run: npx vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
+        if: steps.precheck.outputs.ready == 'true'
+        run: npx vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
